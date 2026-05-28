@@ -12,6 +12,8 @@ set -euo pipefail
 REPO="openai/codex"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PACKAGE_NIX="${SCRIPT_DIR}/../package.nix"
+TMP_HASHES=""
+TMP_PACKAGE=""
 
 PLATFORMS=(
   "aarch64-apple-darwin"
@@ -19,6 +21,14 @@ PLATFORMS=(
   "x86_64-unknown-linux-musl"
   "aarch64-unknown-linux-musl"
 )
+
+cleanup() {
+  [[ -n "$TMP_HASHES" && -f "$TMP_HASHES" ]] && rm -f "$TMP_HASHES"
+  [[ -n "$TMP_PACKAGE" && -f "$TMP_PACKAGE" ]] && rm -f "$TMP_PACKAGE"
+  return 0
+}
+
+trap cleanup EXIT
 
 current_version() {
   grep 'version = "' "$PACKAGE_NIX" | head -1 | sed 's/.*"\(.*\)".*/\1/'
@@ -60,28 +70,53 @@ echo "Updating to:     ${NEW_VERSION}"
 echo ""
 
 echo "Fetching SHA256 hashes..."
+TMP_HASHES=$(mktemp)
 for platform in "${PLATFORMS[@]}"; do
-  hash=$(nix-prefetch-url \
-    "https://github.com/${REPO}/releases/download/rust-v${NEW_VERSION}/codex-${platform}.tar.gz" \
-    2>/dev/null | tail -1)
+  url="https://github.com/${REPO}/releases/download/rust-v${NEW_VERSION}/codex-${platform}.tar.gz"
+  hash=$(nix-prefetch-url "$url" 2>/dev/null | tail -1)
+
+  if [[ -z "$hash" ]]; then
+    echo "Failed to fetch hash for ${platform}: ${url}" >&2
+    exit 1
+  fi
 
   echo "  ${platform}: ${hash}"
-
-  tmp=$(mktemp)
-  awk -v platform="$platform" -v hash="$hash" '
-    /hashes = \{/ { in_block=1 }
-    in_block && $0 ~ "\"" platform "\"" {
-      sub(/= "[^"]*"/, "= \"" hash "\"")
-    }
-    in_block && /\};/ { in_block=0 }
-    { print }
-  ' "$PACKAGE_NIX" > "$tmp"
-  mv "$tmp" "$PACKAGE_NIX"
+  printf '%s %s\n' "$platform" "$hash" >> "$TMP_HASHES"
 done
 
-tmp=$(mktemp)
-sed "s/version = \"${CURRENT}\"/version = \"${NEW_VERSION}\"/" "$PACKAGE_NIX" > "$tmp"
-mv "$tmp" "$PACKAGE_NIX"
+TMP_PACKAGE=$(mktemp)
+awk -v version="$NEW_VERSION" '
+  NR == FNR {
+    hashes[$1] = $2
+    next
+  }
+
+  {
+    if ($0 ~ /version = "[^"]+"/) {
+      sub(/version = "[^"]+"/, "version = \"" version "\"")
+    }
+
+    if ($0 ~ /^[[:space:]]*hashes = [{]/) {
+      in_hashes = 1
+    }
+
+    if (in_hashes) {
+      for (platform in hashes) {
+        if (index($0, "\"" platform "\"") > 0) {
+          sub(/= "[^"]*"/, "= \"" hashes[platform] "\"")
+        }
+      }
+    }
+
+    { print }
+
+    if (in_hashes && $0 ~ /^[[:space:]]*};/) {
+      in_hashes = 0
+    }
+  }
+' "$TMP_HASHES" "$PACKAGE_NIX" > "$TMP_PACKAGE"
+mv "$TMP_PACKAGE" "$PACKAGE_NIX"
+TMP_PACKAGE=""
 
 echo ""
 echo "Updated package.nix to v${NEW_VERSION}"
