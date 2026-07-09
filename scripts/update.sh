@@ -72,7 +72,7 @@ echo ""
 echo "Fetching SHA256 hashes..."
 TMP_HASHES=$(mktemp)
 for platform in "${PLATFORMS[@]}"; do
-  url="https://github.com/${REPO}/releases/download/rust-v${NEW_VERSION}/codex-${platform}.tar.gz"
+  url="https://github.com/${REPO}/releases/download/rust-v${NEW_VERSION}/codex-package-${platform}.tar.gz"
   hash=$(nix-prefetch-url "$url" 2>/dev/null | tail -1)
 
   if [[ -z "$hash" ]]; then

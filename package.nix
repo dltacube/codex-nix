@@ -6,6 +6,7 @@
   zlib,
   libcap,
   openssl,
+  ncurses,
 }:
 
 let
@@ -20,10 +21,10 @@ let
   };
 
   hashes = {
-    "x86_64-unknown-linux-musl" = "1fy80pxm1fancrd33xzr71i22b6iyvns1ai9503z6jmb43y86n3j";
-    "aarch64-unknown-linux-musl" = "0lbbrkn857nk5zlzy3lp271yfbpcqdx5zfzm8g3mbddxa1wlmi67";
-    "x86_64-apple-darwin" = "0c935n87iqm5p0fihwiq240pn3v48jlhrabkggfmyxbsrz0li5xx";
-    "aarch64-apple-darwin" = "114jnik61p2x10ilgplr70bq4q2wslwa2v4pg18l4qi41cr65q0h";
+    "x86_64-unknown-linux-musl" = "1z9ni9m8glpk1as8rzcix03gjf3n3mi1gdi7psjlz1qhk7cd40vb";
+    "aarch64-unknown-linux-musl" = "0hmfczqwxfm9l82r3wy3ppq2fzx63ygqd1mm4ly86178dr7f12ym";
+    "x86_64-apple-darwin" = "0gknm3pdrqh9n0his5x16rigimlvggmybbjxppg16fw6b04whmhh";
+    "aarch64-apple-darwin" = "0d5vwp7vdv53zzysr443m4brkm8flp2qjvvipi814rwazx1s5125";
   };
 
   platform = platformMap.${stdenv.hostPlatform.system}
@@ -37,7 +38,7 @@ stdenv.mkDerivation {
   inherit version;
 
   src = fetchurl {
-    url = "https://github.com/${repo}/releases/download/rust-v${version}/codex-${platform}.tar.gz";
+    url = "https://github.com/${repo}/releases/download/rust-v${version}/codex-package-${platform}.tar.gz";
     sha256 = hashes.${platform};
   };
 
@@ -50,6 +51,7 @@ stdenv.mkDerivation {
     zlib
     libcap
     openssl
+    ncurses
   ];
 
   dontConfigure = true;
@@ -58,9 +60,9 @@ stdenv.mkDerivation {
   installPhase = ''
     runHook preInstall
 
-    mkdir -p $out/bin
-    cp codex-${platform} $out/bin/codex
-    chmod +x $out/bin/codex
+    mkdir -p $out
+    cp -R . $out/
+    chmod -R u+w $out
 
     runHook postInstall
   '';
