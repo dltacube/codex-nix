@@ -26,14 +26,14 @@ case "$expected_target" in
     ;;
 esac
 
-for command in find jq nix realpath sort; do
+for command in basename cat diff find grep jq mkdir mktemp nix realpath rm sed sort; do
   command -v "$command" >/dev/null || {
     echo "required command is unavailable: $command" >&2
     exit 1
   }
 done
 
-tmp=$(mktemp -d)
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/codex-release-smoke.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
 
 cat >"$tmp/expected-top-level" <<'EOF'
@@ -144,7 +144,18 @@ jq -e '
   exit 1
 }
 
-closure_size=$(nix path-info --json --closure-size "$output" | jq -er 'to_entries[0].value.closureSize')
+closure_size=$(
+  nix path-info --json --closure-size "$output" |
+    jq -er '
+      if type == "array" then
+        .[0].closureSize
+      elif type == "object" then
+        to_entries[0].value.closureSize
+      else
+        error("unexpected nix path-info JSON shape")
+      end
+    '
+)
 if (( closure_size >= max_closure_bytes )); then
   echo "closure size $closure_size exceeds the $max_closure_bytes byte limit" >&2
   exit 1
