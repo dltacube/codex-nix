@@ -1,16 +1,23 @@
-name: Build
+name: Release Gate
 
 on:
+  pull_request:
   push:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: release-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+  static:
+    name: static
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6.0.2
 
@@ -23,11 +30,66 @@ jobs:
         env:
           NIX_FIRST_BUILD_UID: 400
 
-      - name: Build codex
-        run: nix build .#codex --print-build-logs
+      - name: Validate Nix and shell syntax
+        run: |
+          nix-instantiate --parse package.nix >/dev/null
+          nix flake check --all-systems --no-build
+          bash -n tests/release-smoke.sh
 
-      - name: Test version
-        run: ./result/bin/codex --version
+      - name: Validate workflows
+        run: nix run nixpkgs#actionlint -- -color
 
-      - name: Test help
-        run: ./result/bin/codex --help
+  package:
+    name: package (${{ matrix.nix-system }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            nix-system: x86_64-linux
+            target: x86_64-unknown-linux-musl
+          - runner: ubuntu-24.04-arm
+            nix-system: aarch64-linux
+            target: aarch64-unknown-linux-musl
+          - runner: macos-15-intel
+            nix-system: x86_64-darwin
+            target: x86_64-apple-darwin
+          - runner: macos-15
+            nix-system: aarch64-darwin
+            target: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+        env:
+          NIX_FIRST_BUILD_UID: 400
+
+      - name: Build Codex
+        run: nix build ".#packages.${{ matrix.nix-system }}.codex" --print-build-logs
+
+      - name: Test release package
+        run: bash tests/release-smoke.sh ./result "${{ matrix.target }}"
+
+  release-gate:
+    name: release-gate
+    if: always()
+    needs: [static, package]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every release check
+        env:
+          STATIC_RESULT: ${{ needs.static.result }}
+          PACKAGE_RESULT: ${{ needs.package.result }}
+        run: |
+          if [[ "$STATIC_RESULT" != "success" || "$PACKAGE_RESULT" != "success" ]]; then
+            echo "Release checks failed: static=$STATIC_RESULT package=$PACKAGE_RESULT" >&2
+            exit 1
+          fi
+          echo "All release checks passed."

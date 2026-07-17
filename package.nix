@@ -61,7 +61,7 @@ stdenv.mkDerivation {
     runHook preInstall
 
     mkdir -p $out
-    cp -R . $out/
+    cp -R bin codex-package.json codex-path codex-resources $out/
     chmod -R u+w $out
 
     runHook postInstall
