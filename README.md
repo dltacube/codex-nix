@@ -55,7 +55,12 @@ nix profile install github:SecBear/codex-nix
 ## Updates
 
 CI checks for new releases hourly. When a new version is detected,
-it fetches updated hashes for all platforms, opens a PR, and auto-merges once CI passes.
+it fetches updated hashes for all platforms, opens a PR, dispatches native tests
+for all four supported systems, and auto-merges once the release gate passes.
+
+The release gate validates the upstream CLI package layout and bundled helpers.
+Codex Desktop's separately managed primary runtime (including document and
+spreadsheet dependencies) is intentionally outside this package.
 
 To update manually:
 
