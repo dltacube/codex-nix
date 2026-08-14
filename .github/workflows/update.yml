@@ -128,7 +128,6 @@ jobs:
             echo "::warning::nimkar-progyny is unavailable as a reviewer"
           gh pr edit "$PR_NUMBER" --add-reviewer @copilot || \
             echo "::warning::Copilot code review is unavailable"
-          gh pr comment "$PR_NUMBER" --body '@codex review'
 
       - name: Dispatch release gate
         if: steps.check.outputs.update_needed == 'true' && steps.create-pr.outputs.pull-request-number
