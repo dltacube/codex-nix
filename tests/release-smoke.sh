@@ -54,10 +54,79 @@ bin/codex
 bin/codex-code-mode-host
 codex-package.json
 codex-path/rg
+codex-resources/voice/NOTICE.md
+codex-resources/voice/bin/codex-voice-host
+codex-resources/voice/licenses/LGPL-2.1.txt
+codex-resources/voice/licenses/Opus.txt
+codex-resources/voice/licenses/PCRE2.md
+codex-resources/voice/licenses/libffi.txt
+codex-resources/voice/licenses/proxy-libintl.txt
+codex-resources/voice/licenses/sljit.txt
+codex-resources/voice/licenses/zlib.txt
+codex-resources/voice/manifest.json
+codex-resources/voice/runtime.json
+codex-resources/voice/sources.json
 codex-resources/zsh/bin/zsh
 EOF
+# Exact Codex 0.155.0 voice inventories; keep additions and removals reviewable.
 if [[ "$is_linux" == true ]]; then
-  echo "codex-resources/bwrap" >>"$tmp/expected-files"
+  cat >>"$tmp/expected-files" <<'EOF'
+codex-resources/bwrap
+codex-resources/voice/lib/gstreamer-1.0/libgstapp.so
+codex-resources/voice/lib/gstreamer-1.0/libgstaudioconvert.so
+codex-resources/voice/lib/gstreamer-1.0/libgstaudioresample.so
+codex-resources/voice/lib/gstreamer-1.0/libgstcoreelements.so
+codex-resources/voice/lib/gstreamer-1.0/libgstopus.so
+codex-resources/voice/lib/gstreamer-1.0/libgstrtp.so
+codex-resources/voice/lib/gstreamer-1.0/libgstrtpmanager.so
+codex-resources/voice/lib/libffi.so.8
+codex-resources/voice/lib/libgio-2.0.so.0
+codex-resources/voice/lib/libglib-2.0.so.0
+codex-resources/voice/lib/libgmodule-2.0.so.0
+codex-resources/voice/lib/libgobject-2.0.so.0
+codex-resources/voice/lib/libgstallocators-1.0.so.0
+codex-resources/voice/lib/libgstapp-1.0.so.0
+codex-resources/voice/lib/libgstaudio-1.0.so.0
+codex-resources/voice/lib/libgstbase-1.0.so.0
+codex-resources/voice/lib/libgstnet-1.0.so.0
+codex-resources/voice/lib/libgstpbutils-1.0.so.0
+codex-resources/voice/lib/libgstreamer-1.0.so.0
+codex-resources/voice/lib/libgstrtp-1.0.so.0
+codex-resources/voice/lib/libgsttag-1.0.so.0
+codex-resources/voice/lib/libgstvideo-1.0.so.0
+codex-resources/voice/lib/libintl.so.8
+codex-resources/voice/lib/libopus.so.0
+codex-resources/voice/lib/libpcre2-8.so.0
+codex-resources/voice/lib/libz.so.1
+EOF
+else
+  cat >>"$tmp/expected-files" <<'EOF'
+codex-resources/voice/lib/libffi.8.dylib
+codex-resources/voice/lib/libgio-2.0.0.dylib
+codex-resources/voice/lib/libglib-2.0.0.dylib
+codex-resources/voice/lib/libgmodule-2.0.0.dylib
+codex-resources/voice/lib/libgobject-2.0.0.dylib
+codex-resources/voice/lib/libgstapp-1.0.0.dylib
+codex-resources/voice/lib/libgstaudio-1.0.0.dylib
+codex-resources/voice/lib/libgstbase-1.0.0.dylib
+codex-resources/voice/lib/libgstnet-1.0.0.dylib
+codex-resources/voice/lib/libgstpbutils-1.0.0.dylib
+codex-resources/voice/lib/libgstreamer-1.0.0.dylib
+codex-resources/voice/lib/libgstrtp-1.0.0.dylib
+codex-resources/voice/lib/libgsttag-1.0.0.dylib
+codex-resources/voice/lib/libgstvideo-1.0.0.dylib
+codex-resources/voice/lib/libintl.8.dylib
+codex-resources/voice/lib/libopus.0.dylib
+codex-resources/voice/lib/libpcre2-8.0.dylib
+codex-resources/voice/lib/libz.1.dylib
+codex-resources/voice/plugins/libgstapp.dylib
+codex-resources/voice/plugins/libgstaudioconvert.dylib
+codex-resources/voice/plugins/libgstaudioresample.dylib
+codex-resources/voice/plugins/libgstcoreelements.dylib
+codex-resources/voice/plugins/libgstopus.dylib
+codex-resources/voice/plugins/libgstrtp.dylib
+codex-resources/voice/plugins/libgstrtpmanager.dylib
+EOF
 fi
 sort -o "$tmp/expected-files" "$tmp/expected-files"
 
@@ -84,10 +153,11 @@ jq -e \
 
 codex="$output/bin/codex"
 host="$output/bin/codex-code-mode-host"
+voice_host="$output/codex-resources/voice/bin/codex-voice-host"
 rg="$output/codex-path/rg"
 zsh="$output/codex-resources/zsh/bin/zsh"
 
-for executable in "$codex" "$host" "$rg" "$zsh"; do
+for executable in "$codex" "$host" "$voice_host" "$rg" "$zsh"; do
   [[ -x "$executable" ]] || {
     echo "package executable is missing or not executable: $executable" >&2
     exit 1
@@ -120,6 +190,16 @@ zsh_result=$($zsh -fc 'print -r -- bundled-zsh-ok')
 [[ "$zsh_result" == "bundled-zsh-ok" ]]
 
 $host </dev/null
+
+# Exercise the voice helper loader without opening audio devices or a session.
+voice_build_commit=$("$voice_host" --build-commit)
+expected_voice_build_commit=$(jq -er \
+  '.buildCommit | select(type == "string" and test("^[0-9a-f]{40}$"))' \
+  "$output/codex-resources/voice/manifest.json")
+[[ "$voice_build_commit" == "$expected_voice_build_commit" ]] || {
+  echo "voice helper build commit does not match its manifest" >&2
+  exit 1
+}
 
 if [[ "$is_linux" == true ]]; then
   "$output/codex-resources/bwrap" --version
